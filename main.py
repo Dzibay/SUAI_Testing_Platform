@@ -1,31 +1,35 @@
 from flask import Flask, request
-from flask_sqlalchemy import SQLAlchemy
+from flask_mysqldb import MySQL
+import json
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///tests.sqlite3'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db = SQLAlchemy(app)
+
+# Required
+app.config["MYSQL_USER"] = "root"
+app.config["MYSQL_PASSWORD"] = "1234"
+app.config["MYSQL_DB"] = "database"
+
+mysql = MySQL(app)
 
 
-# class Test(db.Model):
-#     id = db.Column(db.Integer, primary_key=True)
-#     title = db.Column(db.String(100), nullable=False)
-#
-#     def __repr__(self):
-#         return '<Test %r>' % self.id
+@app.route("/login", methods=['GET'])
+def login():
+    cur = mysql.connection.cursor()
+    cur.execute("""SELECT * FROM persons""")
+    rv = cur.fetchall()
+    return json.dumps(rv)
 
 
-# @app.route('/api/main/get_info/<int:id_>', methods=['GET'])
-# def get_info(id_):
-#     return id_
-#
-#
-# @app.route('/api/main/create', methods=['POST'])
-# def create():
-#     title = request.form['title']
-#
-#
-# if __name__ == "__main__":
-#     app.run(debug=True)
+@app.route("/register", methods=['POST'])
+def register():
+    email, password = request.form['email'], request.form['password']
+    cur = mysql.connection.cursor()
+    cur.execute(f"""INSERT INTO `database`.`persons` (`Email`, `Password`) VALUES ('{email}', '{password}');""")
+    mysql.connection.commit()
+    return 'Succes'
+
+
+if __name__ == "__main__":
+    app.run(debug=True)
 
 
