@@ -23,7 +23,7 @@ def login():
 
 @app.route("/register", methods=['POST'])
 def register():
-    email, password = request.form['email'], request.form['password']
+    email, password = request.json['email'], request.json['password']
     cur = mysql.connection.cursor()
     cur.execute(f"""INSERT INTO `database`.`persons` (`Email`, `Password`) VALUES ('{email}', '{password}');""")
     mysql.connection.commit()
