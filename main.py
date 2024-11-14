@@ -88,15 +88,17 @@ def create_test():
     cur = mysql.connection.cursor()
 
     count_users_with_this_id = cur.execute(f"""SELECT * FROM `database`.`persons` WHERE ID = '{owner_id}'""")
-    if count_users_with_this_id != 1:
+    if count_users_with_this_id == 0:
+        survey_title = request.json['title']
+        generated_id = str(uuid.uuid4())
+        cur.execute(f"""INSERT INTO `database`.`surveys` (`ID`, `owner_ID`, `title`)
+                VALUES ("{generated_id}", "{owner_id}", "{survey_title}");""")
+        mysql.connection.commit()
+        return Response(json.dumps({'surveyId': generated_id}), status=200, mimetype='application/json')
+    else:
         return Response('Not valid authentication token!', status=403, mimetype='text/xml')
 
-    survey_title = request.json['title']
-    generated_id = str(uuid.uuid4())
-    cur.execute(f"""INSERT INTO `database`.`surveys` (`ID`, `owner_ID`, `title`)
-        VALUES ("{generated_id}", "{owner_id}", "{survey_title}");""")
-    mysql.connection.commit()
-    return Response(json.dumps({'surveyId': generated_id}), status=200, mimetype='application/json')
+
 
 
 if __name__ == "__main__":
