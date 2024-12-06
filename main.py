@@ -5,6 +5,7 @@ import bcrypt
 import uuid
 import jwt
 
+
 app = Flask(__name__)
 CORS(app, supports_credentials=True, origins=["http://localhost:5173"])
 
@@ -12,7 +13,7 @@ CORS(app, supports_credentials=True, origins=["http://localhost:5173"])
 app.config['MYSQL_HOST'] = 'localhost'
 app.config["MYSQL_USER"] = "root"
 app.config["MYSQL_PASSWORD"] = "1234"
-app.config["MYSQL_DB"] = "surveity"
+app.config["MYSQL_DB"] = "database"
 app.config['SECRET_KEY'] = 'SECRET_KEY'
 
 mysql = MySQL(app)
@@ -112,6 +113,42 @@ def create_survey():
         mysql.connection.commit()
 
         return make_response(jsonify({'surveyId': survey_id}), 200)
+    except jwt.ExpiredSignatureError:
+        return make_response(jsonify({'error': 'Token expired'}), 403)
+    except jwt.InvalidTokenError:
+        return make_response(jsonify({'error': 'Invalid token'}), 403)
+    except Exception as e:
+        return make_response(jsonify({'error': str(e)}), 500)
+
+
+@app.route("/api/v1/surveys/<survey_id>", methods=['GET'])
+def get_survey(survey_id):
+    jwt_token = get_jwt_token()
+    if not jwt_token:
+        return make_response(jsonify({'error': 'Authentication token is missing'}), 401)
+
+    try:
+        payload = jwt.decode(jwt_token, app.config['SECRET_KEY'], algorithms=["HS256"])
+        owner_id = payload['payloads']
+
+        cur = mysql.connection.cursor()
+        cur.execute("SELECT * FROM persons WHERE ID = %s", (owner_id,))
+        if not cur.fetchone():
+            return make_response(jsonify({'error': 'Invalid authentication token'}), 403)
+
+        cur.execute(f'SELECT * FROM surveys WHERE ID = "{survey_id}"')
+        test_data = cur.fetchone()
+        test_info = {'surveyID': test_data[0], 'ownerID': test_data[1], 'title': test_data[2], 'questions': None}
+
+        cur.execute(f'SELECT * FROM questions WHERE survey_ID = "{survey_id}"')
+        test_questions_data = cur.fetchall()
+        test_questions_info = [i[0] for i in test_questions_data]
+        if test_questions_info:
+            test_info['questions'] = test_questions_info
+            return make_response(jsonify(test_info), 200)
+        else:
+            return make_response(jsonify({'error': 'Questions list is empty'}), 404)
+
     except jwt.ExpiredSignatureError:
         return make_response(jsonify({'error': 'Token expired'}), 403)
     except jwt.InvalidTokenError:
