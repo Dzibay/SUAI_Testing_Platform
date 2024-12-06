@@ -138,16 +138,53 @@ def get_survey(survey_id):
 
         cur.execute(f'SELECT * FROM surveys WHERE ID = "{survey_id}"')
         test_data = cur.fetchone()
-        test_info = {'surveyID': test_data[0], 'ownerID': test_data[1], 'title': test_data[2], 'questions': None}
+        test_info = {'surveyID': test_data[0], 'ownerID': test_data[1], 'title': test_data[2]}
 
         cur.execute(f'SELECT * FROM questions WHERE survey_ID = "{survey_id}"')
         test_questions_data = cur.fetchall()
         test_questions_info = [i[0] for i in test_questions_data]
         if test_questions_info:
             test_info['questions'] = test_questions_info
+            test_info['questions_number'] = len(test_questions_info)
             return make_response(jsonify(test_info), 200)
         else:
             return make_response(jsonify({'error': 'Questions list is empty'}), 404)
+
+    except jwt.ExpiredSignatureError:
+        return make_response(jsonify({'error': 'Token expired'}), 403)
+    except jwt.InvalidTokenError:
+        return make_response(jsonify({'error': 'Invalid token'}), 403)
+    except Exception as e:
+        return make_response(jsonify({'error': str(e)}), 500)
+
+
+@app.route("/api/v1/surveys/questions/<question_id>", methods=['GET'])
+def get_question(question_id):
+    # jwt_token = get_jwt_token()
+    # if not jwt_token:
+    #     return make_response(jsonify({'error': 'Authentication token is missing'}), 401)
+
+    try:
+        # payload = jwt.decode(jwt_token, app.config['SECRET_KEY'], algorithms=["HS256"])
+        # owner_id = payload['payloads']
+        #
+        cur = mysql.connection.cursor()
+        # cur.execute("SELECT * FROM persons WHERE ID = %s", (owner_id,))
+        # if not cur.fetchone():
+        #     return make_response(jsonify({'error': 'Invalid authentication token'}), 403)
+
+        cur.execute(f'SELECT * FROM questions WHERE ID = "{question_id}"')
+        data = cur.fetchone()
+        question_info = {'questionID': data[0], 'surveyID': data[1], 'text': data[2], 'type': data[3]}
+
+        cur.execute(f'SELECT * FROM answers WHERE question_ID = "{question_id}"')
+        question_answers_data = cur.fetchall()
+        question_answers_info = [[i for i in answer] for answer in question_answers_data]
+        if question_answers_info:
+            question_info['answers'] = question_answers_info
+            return make_response(jsonify(question_info), 200)
+        else:
+            return make_response(jsonify({'error': 'Answers list is empty'}), 404)
 
     except jwt.ExpiredSignatureError:
         return make_response(jsonify({'error': 'Token expired'}), 403)
