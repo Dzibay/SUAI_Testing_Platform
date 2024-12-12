@@ -1,5 +1,5 @@
 from typing import List, Dict
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, make_response
 from flask_mysqldb import MySQL
 import MySQLdb.cursors
@@ -62,8 +62,18 @@ def create_tables():
                 FOREIGN KEY (question_ID) REFERENCES questions(ID)
             )
         """)
+        # Create sessions table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS sessions (
+                ID VARCHAR(36) PRIMARY KEY,
+                survey_ID VARCHAR(36) NOT NULL,
+                start_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (survey_ID) REFERENCES surveys(ID)
+            )
+        """)
         mysql.connection.commit()
         cur.close()
+
 
 def get_jwt_token():
     auth_header = request.headers.get("Authorization", "")
@@ -517,6 +527,132 @@ def update_survey(survey_id):
         return make_response(jsonify({'error': 'Invalid token'}), 403)
     except Exception as e:
         return make_response(jsonify({'error': str(e)}), 500)
+
+@app.route("/api/v1/surveys/link", methods=["POST"])
+def generate_survey_link():
+    jwt_token = get_jwt_token()
+    if not jwt_token:
+        return make_response(jsonify({'error': 'Authentication token is missing'}), 401)
+
+    try:
+        payload = jwt.decode(jwt_token, app.config['SECRET_KEY'], algorithms=["HS256"])
+        owner_id = payload['id']
+
+        survey_id = request.json.get('surveyId')
+        if not survey_id:
+            return make_response(jsonify({'error': 'Survey ID is required'}), 400)
+
+        # Check if the survey exists
+        cur = mysql.connection.cursor()
+        cur.execute("SELECT * FROM surveys WHERE ID = %s AND owner_ID = %s", (survey_id, owner_id))
+        if not cur.fetchone():
+            return make_response(jsonify({'error': 'Survey not found or not authorized'}), 404)
+
+        # Create payload for the link
+        link_payload = {
+            "survey_id": survey_id,
+            "exp": datetime.utcnow() + timedelta(days=1)  # Link valid for 1 day
+        }
+        token = jwt.encode(link_payload, app.config['SECRET_KEY'], algorithm="HS256")
+
+        # Generate the link
+        survey_link = f"http://localhost:5173/survey/{token}"
+        return make_response(jsonify({'link': survey_link}), 200)
+    except jwt.ExpiredSignatureError:
+        return make_response(jsonify({'error': 'Token expired'}), 403)
+    except jwt.InvalidTokenError:
+        return make_response(jsonify({'error': 'Invalid token'}), 403)
+    except Exception as e:
+        return make_response(jsonify({'error': str(e)}), 500)
+
+@app.route("/api/v1/surveys/start/<token>", methods=["GET"])
+def start_survey(token):
+    try:
+        # Decode the token to get survey details
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+        survey_id = payload['survey_id']
+
+        cur = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute("SELECT * FROM surveys WHERE ID = %s", (survey_id,))
+        survey = cur.fetchone()
+
+        if not survey:
+            return make_response(jsonify({'error': 'Survey not found'}), 404)
+
+        # Create a session for the user
+        session_id = str(uuid.uuid4())
+        cur.execute("INSERT INTO sessions (ID, survey_ID) VALUES (%s, %s)", (session_id, survey_id))
+        mysql.connection.commit()
+
+        return make_response(jsonify({
+            'sessionId': session_id,
+            'surveyTitle': survey['title'],
+            'startDate': survey['start_date'].isoformat(),
+            'endDate': survey['end_date'].isoformat(),
+            'status': survey['status']
+        }), 200)
+    except jwt.ExpiredSignatureError:
+        return make_response(jsonify({'error': 'Token expired'}), 403)
+    except jwt.InvalidTokenError:
+        return make_response(jsonify({'error': 'Invalid token'}), 403)
+    except Exception as e:
+        return make_response(jsonify({'error': str(e)}), 500)
+
+@app.route("/api/v1/surveys/<survey_id>/questions/next", methods=["GET"])
+def get_next_question(survey_id):
+    session_id = request.headers.get("Session-ID")
+    if not session_id:
+        return make_response(jsonify({'error': 'Session ID is required'}), 400)
+
+    try:
+        cur = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        # Get next unanswered question
+        cur.execute("""
+            SELECT q.* FROM questions q
+            LEFT JOIN user_answers ua ON q.ID = ua.question_ID AND ua.session_ID = %s
+            WHERE q.survey_ID = %s AND ua.ID IS NULL
+            LIMIT 1
+        """, (session_id, survey_id))
+        question = cur.fetchone()
+
+        if not question:
+            return make_response(jsonify({'message': 'No more questions'}), 200)
+
+        return make_response(jsonify({
+            'questionId': question['ID'],
+            'text': question['name'],
+            'type': question['type']
+        }), 200)
+    except Exception as e:
+        return make_response(jsonify({'error': str(e)}), 500)
+
+
+@app.route("/api/v1/surveys/<survey_id>/answer", methods=["POST"])
+def submit_answer(survey_id):
+    session_id = request.headers.get("Session-ID")
+    if not session_id:
+        return make_response(jsonify({'error': 'Session ID is required'}), 400)
+
+    try:
+        data = request.json
+        question_id = data.get('questionId')
+        answer_text = data.get('answer')
+
+        if not question_id or not answer_text:
+            return make_response(jsonify({'error': 'Question ID and answer are required'}), 400)
+
+        # Save the answer
+        cur = mysql.connection.cursor()
+        cur.execute("""
+            INSERT INTO user_answers (ID, session_ID, question_ID, answer)
+            VALUES (%s, %s, %s, %s)
+        """, (str(uuid.uuid4()), session_id, question_id, answer_text))
+        mysql.connection.commit()
+
+        return make_response(jsonify({'message': 'Answer submitted successfully'}), 200)
+    except Exception as e:
+        return make_response(jsonify({'error': str(e)}), 500)
+
 
 if __name__ == "__main__":
     create_tables()
