@@ -18,7 +18,7 @@ class TestService:
     def create_test(user_id, data):
         options = data.get('options', {})
         description = data['description'] if options.get('description') else None
-        user_inputs = json.dumps(data['user_inputs']) if options.get('user_inputs') else None
+        user_inputs = json.dumps(data['user_inputs']) if not options.get('user_inputs') else None
         end_date = datetime.strptime(data['end_date'], '%Y-%m-%dT%H:%M:%S.%fZ') if data.get('end_date') else None
         start_date = datetime.strptime(data['start_date'], '%Y-%m-%dT%H:%M:%S.%fZ') if data.get('start_date') else None
 
@@ -123,7 +123,7 @@ class TestService:
     @staticmethod
     def get_test_by_id(test_id, user_id):
         test = Test.query.filter_by(id=test_id, user_id=user_id).first_or_404()
-        questions = Question.query.filter_by(test_id=test_id).all()
+        questions = Question.query.filter_by(test_id=test_id).order_by(Question.order).all()
         test_data = {
             "id": test.id,
             "title": test.title,
@@ -225,15 +225,18 @@ class TestService:
             # if existing_session and not test.options_dict.get('allow_multiple_submissions', False):
             #     return None, "You have already completed the test."
 
-            questions = Question.query.filter_by(test_id=test_id).all()
+            questions = Question.query.filter_by(test_id=test_id).order_by(Question.order).all()
             return {
                 "id": test.id,
                 "title": test.title,
                 "start_date": test.start_date,
                 "end_date": test.end_date,
+                "options": json.loads(test.options),
+                "description": test.description,
                 "type": test.type,
                 "question_count": len(questions),
-                "user_inputs": json.loads(test.user_inputs)
+                "user_inputs": json.loads(test.user_inputs),
+                "complete_time": test.complete_time,
             }, None
         except Exception as e:
             return None, str(e)
@@ -539,5 +542,3 @@ class TestService:
             return None, "Test not found."
         except Exception as e:
             return None, str(e)
-
-
