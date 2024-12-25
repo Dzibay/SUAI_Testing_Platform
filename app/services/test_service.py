@@ -164,7 +164,8 @@ class TestService:
 
         payload = {
             'test_id': test_id,
-            'exp': datetime.now(timezone.utc) + timedelta(hours=lifetime or 2)  # Срок жизни токена
+            'exp': datetime.now(timezone.utc) + timedelta(hours=lifetime or 2),
+            'sub': 'web'
         }
 
         token = jwt.encode(payload, current_app.config['SECRET_KEY'], algorithm='HS256')
@@ -179,7 +180,7 @@ class TestService:
             return link
         elif link_type == 'telegram':
             bot_name = current_app.config['TELEGRAM_BOT_NAME']
-            link = f"https://t.me/{bot_name}?start={token}"
+            link = f"https://t.me/{bot_name}?start={test_id}"
             test.tgLink = link
             db.session.commit()
             return link
@@ -217,8 +218,9 @@ class TestService:
 
             decoded_token = jwt.decode(token, current_app.config['SECRET_KEY'], algorithms=['HS256'])
             test_id = decoded_token['test_id']
+            token_sub = decoded_token['sub']
             test = Test.query.get_or_404(test_id)
-            if test.auth_token != token:
+            if test.auth_token != token and token_sub != 'telegramSurveityBot':
                 return None, "Link has been updated. Please use the new link."
 
             # existing_session = Session.query.filter_by(test_id=test_id, status='completed').first()
@@ -280,9 +282,9 @@ class TestService:
 
             # Получение теста по test_id
             test = Test.query.get_or_404(test_id)
+            token_sub = decoded_token['sub']
 
-            # Проверка, соответствует ли токен текущему auth_token теста
-            if test.auth_token != token:
+            if test.auth_token != token and token_sub != 'telegramSurveityBot':
                 return None, "Link has been updated. Please use the new link."
 
             # Проверка, что userInputs не является NULL, если test.user_inputs также не является NULL
@@ -323,7 +325,8 @@ class TestService:
             return None, "Invalid token."
 
         test = Test.query.get_or_404(test_id)
-        if test.auth_token != token:
+        token_sub = decoded_token['sub']
+        if test.auth_token != token and token_sub != 'telegramSurveityBot':
             return None, "Link has been updated. Please use the new link."
 
         session = Session.query.filter_by(test_id=test_id, id=session_id).first()
@@ -420,39 +423,13 @@ class TestService:
             return None, str(e)
 
     @staticmethod
-    def start_session(token):
-        try:
-            decoded_token = jwt.decode(token, current_app.config['SECRET_KEY'], algorithms=['HS256'])
-            test_id = decoded_token['test_id']
-            test = Test.query.get_or_404(test_id)
-            if test.auth_token != token:
-                return None, "Link has been updated. Please use the new link."
-
-            new_session = Session(
-                test_id=test_id,
-                status='start',
-                current_question_id=None,
-                time_spent=datetime.now(timezone.utc) - datetime.now(timezone.utc)  # Initialize time_spent to zero
-            )
-            db.session.add(new_session)
-            db.session.commit()
-            return new_session.id, None
-        except jwt.ExpiredSignatureError:
-            return None, "Signature has expired."
-        except jwt.InvalidTokenError:
-            return None, "Invalid token."
-        except NoResultFound:
-            return None, "Test not found."
-        except Exception as e:
-            return None, str(e)
-
-    @staticmethod
     def start_test(token, session_id):
         try:
             decoded_token = jwt.decode(token, current_app.config['SECRET_KEY'], algorithms=['HS256'])
             test_id = decoded_token['test_id']
+            token_sub = decoded_token['sub']
             test = Test.query.get_or_404(test_id)
-            if test.auth_token != token:
+            if test.auth_token != token and token_sub != 'telegramSurveityBot':
                 return None, "Link has been updated. Please use the new link."
 
             session = Session.query.filter_by(test_id=test_id, id=session_id).first()

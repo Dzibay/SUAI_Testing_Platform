@@ -85,3 +85,31 @@ def update_test_with_questions_and_answers(test_id):
     print('Here')
     updated_test = TestService.update_test_with_questions_and_answers(test_id, data, questions_data)
     return jsonify({"message": "Test with questions and answers updated successfully", "id": updated_test.id}), 200
+
+@bp.route('/tests/<string:test_id>/generate_link', methods=['POST'])
+@jwt_required()
+def generate_test_link(test_id):
+    data = request.get_json()
+    link_type = data.get('link_type')
+    lifetime = data.get('lifetime')
+    link = TestService.generate_test_link(test_id, link_type, lifetime)
+    if link:
+        return jsonify({"link": link}), 200
+    else:
+        return jsonify({"message": "Invalid link type"}), 400
+
+@bp.route('/tests/<string:test_id>/close_link', methods=['POST'])
+@jwt_required()
+def close_test_link(test_id):
+    data = request.get_json()
+    link_type = data.get('link_type')
+    TestService.close_test_link(test_id, link_type)
+    return jsonify(), 204
+
+@bp.route('/tests/current/summary', methods=['GET'])
+def get_test_summary_by_token():
+    token = request.args.get('token')
+    summary, error = TestService.get_test_summary_by_token(token)
+    if error:
+        return jsonify({"message": error}), 400
+    return jsonify(summary), 200

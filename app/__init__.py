@@ -18,7 +18,7 @@ def create_app():
          origins=app.config['CORS_ORIGINS'],
          allow_headers=["Authorization", "Content-Type", "Access-Control-Allow-Origin"],
          methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-         supports_credentials=True)  # Убедитесь, что это включено
+         supports_credentials=True)
 
     db.init_app(app)
     migrate.init_app(app, db)
